@@ -1,171 +1,262 @@
+require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
+const connectDB = require("./config/db");
+const User = require("./models/User");
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
+// Middleware
 app.use(cors());
 app.use(express.json());
 
-// In-memory users store
-const users = {};
-
-// Helper: create user if not exists
-const ensureUserExists = (userId) => {
-  if (!users[userId]) {
-    users[userId] = {
-      checkIns: [],
-      circle: [],
-      settings: {
-        reminderEnabled: true,
-        reminderTime: "09:00",
-        visibility: "circle",
-      },
-    };
-  }
-};
+// Connect MongoDB
+connectDB();
 
 // Test route
 app.get("/", (req, res) => {
-  res.send("Checkin’in backend with settings running 🚀");
+  res.send("Checkin’in backend with MongoDB running 🚀");
 });
 
+
+// =======================
 // POST /checkin
-app.post("/checkin", (req, res) => {
-  const { userId, date } = req.body;
+// =======================
+app.post("/checkin", async (req, res) => {
+  try {
+    const { userId, date } = req.body;
 
-  if (!userId || !date) {
-    return res.status(400).json({
+    if (!userId || !date) {
+      return res.status(400).json({
+        success: false,
+        message: "userId and date are required",
+      });
+    }
+
+    let user = await User.findOne({ userId });
+
+    if (!user) {
+      user = new User({
+        userId,
+        checkIns: [],
+        circle: [],
+      });
+    }
+
+    if (!user.checkIns.includes(date)) {
+      user.checkIns.push(date);
+    }
+
+    await user.save();
+
+    res.json({
+      success: true,
+      message: "Checked in successfully",
+      data: user.checkIns,
+    });
+  } catch (error) {
+    console.error("Check-in error:", error);
+    res.status(500).json({
       success: false,
-      message: "userId and date are required",
+      message: "Server error",
     });
   }
-
-  ensureUserExists(userId);
-
-  if (!users[userId].checkIns.includes(date)) {
-    users[userId].checkIns.push(date);
-  }
-
-  res.json({
-    success: true,
-    message: "Checked in successfully",
-    data: users[userId].checkIns,
-  });
 });
 
+
+// =======================
 // GET /history
-app.get("/history", (req, res) => {
-  const { userId } = req.query;
+// =======================
+app.get("/history", async (req, res) => {
+  try {
+    const { userId } = req.query;
 
-  if (!userId) {
-    return res.status(400).json({
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: "userId is required",
+      });
+    }
+
+    const user = await User.findOne({ userId });
+
+    res.json({
+      success: true,
+      data: user?.checkIns || [],
+    });
+  } catch (error) {
+    console.error("History error:", error);
+    res.status(500).json({
       success: false,
-      message: "userId is required",
+      message: "Server error",
     });
   }
-
-  ensureUserExists(userId);
-
-  res.json({
-    success: true,
-    data: users[userId].checkIns,
-  });
 });
 
+
+// =======================
 // POST /circle/add
-app.post("/circle/add", (req, res) => {
-  const { userId, targetUserId } = req.body;
+// =======================
+app.post("/circle/add", async (req, res) => {
+  try {
+    const { userId, targetUserId } = req.body;
 
-  if (!userId || !targetUserId) {
-    return res.status(400).json({
+    if (!userId || !targetUserId) {
+      return res.status(400).json({
+        success: false,
+        message: "userId and targetUserId are required",
+      });
+    }
+
+    if (userId === targetUserId) {
+      return res.status(400).json({
+        success: false,
+        message: "You cannot add yourself",
+      });
+    }
+
+    let user = await User.findOne({ userId });
+    let targetUser = await User.findOne({ userId: targetUserId });
+
+    if (!user) {
+      user = new User({ userId });
+    }
+
+    if (!targetUser) {
+      targetUser = new User({ userId: targetUserId });
+      await targetUser.save();
+    }
+
+    if (!user.circle.includes(targetUserId)) {
+      user.circle.push(targetUserId);
+    }
+
+    await user.save();
+
+    res.json({
+      success: true,
+      data: user.circle,
+    });
+  } catch (error) {
+    console.error("Circle add error:", error);
+    res.status(500).json({
       success: false,
-      message: "userId and targetUserId are required",
+      message: "Server error",
     });
   }
-
-  ensureUserExists(userId);
-  ensureUserExists(targetUserId);
-
-  if (userId === targetUserId) {
-    return res.status(400).json({
-      success: false,
-      message: "You cannot add yourself",
-    });
-  }
-
-  if (!users[userId].circle.includes(targetUserId)) {
-    users[userId].circle.push(targetUserId);
-  }
-
-  res.json({
-    success: true,
-    data: users[userId].circle,
-  });
 });
 
+
+// =======================
 // GET /circle
-app.get("/circle", (req, res) => {
-  const { userId } = req.query;
+// =======================
+app.get("/circle", async (req, res) => {
+  try {
+    const { userId } = req.query;
 
-  if (!userId) {
-    return res.status(400).json({
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: "userId is required",
+      });
+    }
+
+    const user = await User.findOne({ userId });
+
+    res.json({
+      success: true,
+      data: user?.circle || [],
+    });
+  } catch (error) {
+    console.error("Circle fetch error:", error);
+    res.status(500).json({
       success: false,
-      message: "userId is required",
+      message: "Server error",
     });
   }
-
-  ensureUserExists(userId);
-
-  res.json({
-    success: true,
-    data: users[userId].circle,
-  });
 });
 
+
+// =======================
 // GET /settings
-app.get("/settings", (req, res) => {
-  const { userId } = req.query;
+// =======================
+app.get("/settings", async (req, res) => {
+  try {
+    const { userId } = req.query;
 
-  if (!userId) {
-    return res.status(400).json({
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: "userId is required",
+      });
+    }
+
+    let user = await User.findOne({ userId });
+
+    if (!user) {
+      user = new User({ userId });
+      await user.save();
+    }
+
+    res.json({
+      success: true,
+      data: user.settings,
+    });
+  } catch (error) {
+    console.error("Settings fetch error:", error);
+    res.status(500).json({
       success: false,
-      message: "userId is required",
+      message: "Server error",
     });
   }
-
-  ensureUserExists(userId);
-
-  res.json({
-    success: true,
-    data: users[userId].settings,
-  });
 });
 
+
+// =======================
 // POST /settings
-app.post("/settings", (req, res) => {
-  const { userId, settings } = req.body;
+// =======================
+app.post("/settings", async (req, res) => {
+  try {
+    const { userId, settings } = req.body;
 
-  if (!userId || !settings) {
-    return res.status(400).json({
+    if (!userId || !settings) {
+      return res.status(400).json({
+        success: false,
+        message: "userId and settings are required",
+      });
+    }
+
+    let user = await User.findOne({ userId });
+
+    if (!user) {
+      user = new User({ userId });
+    }
+
+    user.settings = {
+      ...user.settings,
+      ...settings,
+    };
+
+    await user.save();
+
+    res.json({
+      success: true,
+      data: user.settings,
+    });
+  } catch (error) {
+    console.error("Settings update error:", error);
+    res.status(500).json({
       success: false,
-      message: "userId and settings are required",
+      message: "Server error",
     });
   }
-
-  ensureUserExists(userId);
-
-  users[userId].settings = {
-    ...users[userId].settings,
-    ...settings,
-  };
-
-  res.json({
-    success: true,
-    data: users[userId].settings,
-  });
 });
 
+
+// =======================
+// START SERVER
+// =======================
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });

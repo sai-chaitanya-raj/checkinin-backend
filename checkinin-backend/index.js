@@ -10,20 +10,25 @@ app.use(express.json());
 // In-memory users store
 const users = {};
 
-// Test route
-app.get("/", (req, res) => {
-  res.send("Checkin’in backend with users & circle running 🚀");
-});
-
 // Helper: create user if not exists
 const ensureUserExists = (userId) => {
   if (!users[userId]) {
     users[userId] = {
       checkIns: [],
       circle: [],
+      settings: {
+        reminderEnabled: true,
+        reminderTime: "09:00",
+        visibility: "circle",
+      },
     };
   }
 };
+
+// Test route
+app.get("/", (req, res) => {
+  res.send("Checkin’in backend with settings running 🚀");
+});
 
 // POST /checkin
 app.post("/checkin", (req, res) => {
@@ -49,7 +54,7 @@ app.post("/checkin", (req, res) => {
   });
 });
 
-// GET /history?userId=xxx
+// GET /history
 app.get("/history", (req, res) => {
   const { userId } = req.query;
 
@@ -60,9 +65,7 @@ app.get("/history", (req, res) => {
     });
   }
 
-  if (!users[userId]) {
-    return res.json({ success: true, data: [] });
-  }
+  ensureUserExists(userId);
 
   res.json({
     success: true,
@@ -97,12 +100,11 @@ app.post("/circle/add", (req, res) => {
 
   res.json({
     success: true,
-    message: "User added to circle",
     data: users[userId].circle,
   });
 });
 
-// GET /circle?userId=xxx
+// GET /circle
 app.get("/circle", (req, res) => {
   const { userId } = req.query;
 
@@ -113,13 +115,54 @@ app.get("/circle", (req, res) => {
     });
   }
 
-  if (!users[userId]) {
-    return res.json({ success: true, data: [] });
-  }
+  ensureUserExists(userId);
 
   res.json({
     success: true,
     data: users[userId].circle,
+  });
+});
+
+// GET /settings
+app.get("/settings", (req, res) => {
+  const { userId } = req.query;
+
+  if (!userId) {
+    return res.status(400).json({
+      success: false,
+      message: "userId is required",
+    });
+  }
+
+  ensureUserExists(userId);
+
+  res.json({
+    success: true,
+    data: users[userId].settings,
+  });
+});
+
+// POST /settings
+app.post("/settings", (req, res) => {
+  const { userId, settings } = req.body;
+
+  if (!userId || !settings) {
+    return res.status(400).json({
+      success: false,
+      message: "userId and settings are required",
+    });
+  }
+
+  ensureUserExists(userId);
+
+  users[userId].settings = {
+    ...users[userId].settings,
+    ...settings,
+  };
+
+  res.json({
+    success: true,
+    data: users[userId].settings,
   });
 });
 

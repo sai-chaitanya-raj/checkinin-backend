@@ -12,8 +12,18 @@ const users = {};
 
 // Test route
 app.get("/", (req, res) => {
-  res.send("Checkin’in backend with users running 🚀");
+  res.send("Checkin’in backend with users & circle running 🚀");
 });
+
+// Helper: create user if not exists
+const ensureUserExists = (userId) => {
+  if (!users[userId]) {
+    users[userId] = {
+      checkIns: [],
+      circle: [],
+    };
+  }
+};
 
 // POST /checkin
 app.post("/checkin", (req, res) => {
@@ -26,10 +36,7 @@ app.post("/checkin", (req, res) => {
     });
   }
 
-  // Create user if not exists
-  if (!users[userId]) {
-    users[userId] = { checkIns: [] };
-  }
+  ensureUserExists(userId);
 
   if (!users[userId].checkIns.includes(date)) {
     users[userId].checkIns.push(date);
@@ -54,15 +61,65 @@ app.get("/history", (req, res) => {
   }
 
   if (!users[userId]) {
-    return res.json({
-      success: true,
-      data: [],
-    });
+    return res.json({ success: true, data: [] });
   }
 
   res.json({
     success: true,
     data: users[userId].checkIns,
+  });
+});
+
+// POST /circle/add
+app.post("/circle/add", (req, res) => {
+  const { userId, targetUserId } = req.body;
+
+  if (!userId || !targetUserId) {
+    return res.status(400).json({
+      success: false,
+      message: "userId and targetUserId are required",
+    });
+  }
+
+  ensureUserExists(userId);
+  ensureUserExists(targetUserId);
+
+  if (userId === targetUserId) {
+    return res.status(400).json({
+      success: false,
+      message: "You cannot add yourself",
+    });
+  }
+
+  if (!users[userId].circle.includes(targetUserId)) {
+    users[userId].circle.push(targetUserId);
+  }
+
+  res.json({
+    success: true,
+    message: "User added to circle",
+    data: users[userId].circle,
+  });
+});
+
+// GET /circle?userId=xxx
+app.get("/circle", (req, res) => {
+  const { userId } = req.query;
+
+  if (!userId) {
+    return res.status(400).json({
+      success: false,
+      message: "userId is required",
+    });
+  }
+
+  if (!users[userId]) {
+    return res.json({ success: true, data: [] });
+  }
+
+  res.json({
+    success: true,
+    data: users[userId].circle,
   });
 });
 

@@ -12,16 +12,22 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
+// Scheduler
+const scheduler = require("./services/scheduler");
+scheduler.start();
+
 // Connect to MongoDB
-mongoose.connect(process.env.MONGO_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-}).then(() => console.log("MongoDB Connected"))
+mongoose.connect(process.env.MONGO_URI)
+  .then(() => console.log("MongoDB Connected"))
   .catch(err => console.error(err));
+
+// Routes
+const profileRoutes = require("./routes/profile");
 
 // Routes
 app.use("/auth", authRoutes);
 app.use("/friends", friendRoutes);
+app.use("/profile", profileRoutes);
 
 // =======================
 // POST /checkin
@@ -101,53 +107,8 @@ app.get("/emotional-presence", async (req, res) => {
 // =======================
 // GET /settings (Profile/Settings)
 // =======================
-app.get("/settings", async (req, res) => {
-  // Legacy support: Allows fetching by query param without token if needed, 
-  // but ideally should be protected.
-  try {
-    const userId = req.query.userId;
-    const user = await User.findOne({ userId });
-    if (!user) return res.status(404).json({ success: false });
-
-    res.json({
-      success: true,
-      settings: user.settings || {},
-      user: {
-        name: user.name,
-        email: user.email,
-        publicId: user.publicId,
-        avatar: user.avatar
-      }
-    });
-  } catch (error) {
-    res.status(500).json({ success: false });
-  }
-});
-
-// =======================
-// POST /settings
-// =======================
-app.post("/settings", authMiddleware, async (req, res) => {
-  try {
-    const { theme, reminderEnabled, visibility, name } = req.body;
-    const user = req.user;
-
-    if (user.settings) {
-      user.settings.theme = theme || user.settings.theme;
-      user.settings.reminderEnabled = reminderEnabled !== undefined ? reminderEnabled : user.settings.reminderEnabled;
-      user.settings.visibility = visibility || user.settings.visibility;
-    } else {
-      user.settings = { theme, reminderEnabled, visibility };
-    }
-
-    if (name) user.name = name;
-
-    await user.save();
-    res.json({ success: true, settings: user.settings });
-  } catch (error) {
-    res.status(500).json({ success: false });
-  }
-});
+// Deprecated /settings endpoints removed. 
+// Uses routes/settings.js and routes/profile.js instead.
 
 const PORT = process.env.PORT || 5001;
 app.listen(PORT, () => {

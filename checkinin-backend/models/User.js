@@ -7,50 +7,28 @@ const UserSchema = new mongoose.Schema({
     required: true,
   },
 
+  // Identity
   publicId: {
     type: String,
     unique: true,
     sparse: true,
     index: true,
-  },
-
-  name: {
-    type: String,
     trim: true,
+    uppercase: true
   },
+  name: { type: String, trim: true },
+  age: { type: Number },
+  avatar: { type: String, default: "" },
+  expoPushToken: { type: String },
 
-  age: {
-    type: Number,
-  },
-
-  email: {
-    type: String,
-    unique: true,
-  },
-
-  password: {
-    type: String,
-    select: false, // Don't return by default
-  },
-
-  avatar: {
-    type: String,
-    default: "",
-  },
-
-  authProvider: {
-    type: String, // "google" | "email"
-    required: true,
-    default: "email",
-  },
-
-  friends: [{ type: String }], // Array of userIds
-
+  // Social
+  friends: { type: [String], default: [] }, // Array of userIds
   friendRequests: {
-    sent: [{ type: String }], // Array of userIds
-    received: [{ type: String }], // Array of userIds
+    sent: { type: [String], default: [] },
+    received: { type: [String], default: [] },
   },
 
+  // Content
   checkIns: [
     {
       date: { type: String, required: true },
@@ -59,16 +37,29 @@ const UserSchema = new mongoose.Schema({
     }
   ],
 
-  settings: {
-    theme: { type: String, default: "system" },
-    reminderEnabled: { type: Boolean, default: true },
-    visibility: { type: String, default: "circle" }
+  // Preferences & Privacy
+  privacy: {
+    profileVisibility: { type: String, enum: ["public", "friends", "private"], default: "public" },
+    checkinVisibility: { type: String, enum: ["public", "friends", "private"], default: "friends" },
+    friendRequestPermission: { type: String, enum: ["everyone", "friends_of_friends", "nobody"], default: "everyone" },
+    searchable: { type: Boolean, default: true },
+    showLastSeen: { type: Boolean, default: true }
   },
 
-  circle: {
-    type: [String],
-    default: [],
+  settings: {
+    theme: { type: String, enum: ["light", "dark", "system"], default: "system" },
+    reminderEnabled: { type: Boolean, default: true },
+    reminderTime: { type: String, default: "20:00" }, // 24h format
+    notifications: {
+      checkIns: { type: Boolean, default: true },
+      friendRequests: { type: Boolean, default: true },
+      updates: { type: Boolean, default: false }
+    }
   },
+
+  // Legacy (Keep for migration safety if needed, can be deprecated)
+  circle: { type: [String], default: [] },
+
 }, { timestamps: true });
 
 module.exports = mongoose.model("User", UserSchema);

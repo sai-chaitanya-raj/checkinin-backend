@@ -7,15 +7,48 @@ const UserSchema = new mongoose.Schema({
     required: true,
   },
 
-  email: {
+  publicId: {
     type: String,
     unique: true,
     sparse: true,
+    index: true,
+  },
+
+  name: {
+    type: String,
+    trim: true,
+  },
+
+  age: {
+    type: Number,
+  },
+
+  email: {
+    type: String,
+    unique: true,
+  },
+
+  password: {
+    type: String,
+    select: false, // Don't return by default
+  },
+
+  avatar: {
+    type: String,
+    default: "",
   },
 
   authProvider: {
-    type: String, // "google" | "phone"
+    type: String, // "google" | "email"
     required: true,
+    default: "email",
+  },
+
+  friends: [{ type: String }], // Array of userIds
+
+  friendRequests: {
+    sent: [{ type: String }], // Array of userIds
+    received: [{ type: String }], // Array of userIds
   },
 
   checkIns: [
@@ -26,35 +59,16 @@ const UserSchema = new mongoose.Schema({
     }
   ],
 
+  settings: {
+    theme: { type: String, default: "system" },
+    reminderEnabled: { type: Boolean, default: true },
+    visibility: { type: String, default: "circle" }
+  },
+
   circle: {
     type: [String],
     default: [],
   },
-
-  settings: {
-    reminderEnabled: {
-      type: Boolean,
-      default: true,
-    },
-    reminderTime: {
-      type: String,
-      default: "09:00",
-    },
-    visibility: {
-      type: String,
-      default: "circle",
-    },
-    theme: {
-      type: String,
-      enum: ["light", "dark", "system"],
-      default: "system",
-    },
-  },
-
-  createdAt: {
-    type: Date,
-    default: Date.now,
-  },
-});
+}, { timestamps: true });
 
 module.exports = mongoose.model("User", UserSchema);

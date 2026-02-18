@@ -1,42 +1,35 @@
 require("dotenv").config();
 const express = require("express");
+const mongoose = require("mongoose");
 const cors = require("cors");
-const connectDB = require("./config/db");
 
 const authRoutes = require("./routes/auth");
+const friendRoutes = require("./routes/friends");
+const authMiddleware = require("./middleware/auth");
 const User = require("./models/User");
 
 const app = express();
-const PORT = process.env.PORT || 3000;
-
-// Middleware
-app.use(cors());
 app.use(express.json());
+app.use(cors());
 
-// Connect MongoDB
-connectDB();
+// Connect to MongoDB
+mongoose.connect(process.env.MONGO_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+}).then(() => console.log("MongoDB Connected"))
+  .catch(err => console.error(err));
 
-// Test route
-app.get("/", (req, res) => {
-  res.send("Checkin’in backend running 🚀");
-});
-
-// Auth routes
+// Routes
 app.use("/auth", authRoutes);
+app.use("/friends", friendRoutes);
 
 // =======================
 // POST /checkin
 // =======================
-app.post("/checkin", async (req, res) => {
+app.post("/checkin", authMiddleware, async (req, res) => {
   try {
-    const { userId, date, mood } = req.body;
-
-    if (!userId || !date) {
-      return res.status(400).json({ success: false, message: "Missing userId or date" });
-    }
-
-    let user = await User.findOne({ userId });
-    if (!user) return res.status(404).json({ success: false, message: "User not found" });
+    const { date, mood } = req.body;
+    const user = req.user; // Attached by middleware
 
     // Check if already checked in for this date
     const existingCheckIn = user.checkIns.find(c => c.date === date);
@@ -49,8 +42,6 @@ app.post("/checkin", async (req, res) => {
       });
       await user.save();
     } else {
-      // Optional: Update mood if already checked in?
-      // For now, we'll just ignore or update. Let's update it.
       existingCheckIn.mood = mood || existingCheckIn.mood;
       await user.save();
     }
@@ -66,13 +57,18 @@ app.post("/checkin", async (req, res) => {
 // GET /history
 // =======================
 app.get("/history", async (req, res) => {
+  // Making this public for now, or use authMiddleware if strict
+  // If strict: app.get("/history", authMiddleware, ...)
   try {
-    const user = await User.findOne({ userId: req.query.userId });
-    // Transform to simple array of dates for backward compatibility if needed, 
-    // BUT frontend expects strings. We should update frontend to handle objects 
-    // OR we map here. Let's send full objects now and update frontend.
-    res.json({ success: true, data: user?.checkIns || [] });
-  } catch {
+    const userId = req.query.userId;
+    if (!userId) return res.status(400).json({ success: false });
+
+    const user = await User.findOne({ userId });
+    if (!user) return res.status(404).json({ success: false });
+
+    // Return checks
+    res.json({ success: true, data: user.checkIns });
+  } catch (error) {
     res.status(500).json({ success: false });
   }
 });
@@ -103,35 +99,26 @@ app.get("/emotional-presence", async (req, res) => {
 });
 
 // =======================
-// GET /settings
+// GET /settings (Profile/Settings)
 // =======================
 app.get("/settings", async (req, res) => {
+  // Legacy support: Allows fetching by query param without token if needed, 
+  // but ideally should be protected.
   try {
-    let user = await User.findOne({ userId: req.query.userId });
-    if (!user) {
-      // Create user if not exists (lazy creation for settings)
-      user = new User({
-        userId: req.query.userId,
-        authProvider: "unknown", // or infer if possible
-        settings: {
-          theme: "system",
-          reminderEnabled: true,
-          visibility: "circle"
-        }
-      });
-      await user.save();
-    }
+    const userId = req.query.userId;
+    const user = await User.findOne({ userId });
+    if (!user) return res.status(404).json({ success: false });
 
-    if (!user.settings) {
-      user.settings = {
-        theme: "system",
-        reminderEnabled: true,
-        visibility: "circle"
-      };
-      await user.save();
-    }
-
-    res.json({ success: true, data: user.settings });
+    res.json({
+      success: true,
+      settings: user.settings || {},
+      user: {
+        name: user.name,
+        email: user.email,
+        publicId: user.publicId,
+        avatar: user.avatar
+      }
+    });
   } catch (error) {
     res.status(500).json({ success: false });
   }
@@ -140,25 +127,29 @@ app.get("/settings", async (req, res) => {
 // =======================
 // POST /settings
 // =======================
-app.post("/settings", async (req, res) => {
+app.post("/settings", authMiddleware, async (req, res) => {
   try {
-    const { userId, settings } = req.body;
-    console.log("Updating settings for", userId, settings);
-    let user = await User.findOne({ userId });
-    if (!user) return res.status(404).json({ success: false });
+    const { theme, reminderEnabled, visibility, name } = req.body;
+    const user = req.user;
 
-    // Merge existing settings with new settings
-    user.settings = { ...user.settings, ...settings };
+    if (user.settings) {
+      user.settings.theme = theme || user.settings.theme;
+      user.settings.reminderEnabled = reminderEnabled !== undefined ? reminderEnabled : user.settings.reminderEnabled;
+      user.settings.visibility = visibility || user.settings.visibility;
+    } else {
+      user.settings = { theme, reminderEnabled, visibility };
+    }
+
+    if (name) user.name = name;
+
     await user.save();
-
-    res.json({ success: true, data: user.settings });
+    res.json({ success: true, settings: user.settings });
   } catch (error) {
-    console.error("Settings update error:", error);
     res.status(500).json({ success: false });
   }
 });
 
-// Start server
+const PORT = process.env.PORT || 5001;
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });

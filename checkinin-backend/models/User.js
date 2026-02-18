@@ -3,17 +3,34 @@ const mongoose = require("mongoose");
 const UserSchema = new mongoose.Schema({
   userId: {
     type: String,
-    required: true,
     unique: true,
+    required: true,
   },
-  checkIns: {
-    type: [String],
-    default: [],
+
+  email: {
+    type: String,
+    unique: true,
+    sparse: true,
   },
+
+  authProvider: {
+    type: String, // "google" | "phone"
+    required: true,
+  },
+
+  checkIns: [
+    {
+      date: { type: String, required: true },
+      mood: { type: String, enum: ["great", "okay", "bad"], default: "okay" },
+      timestamp: { type: Date, default: Date.now }
+    }
+  ],
+
   circle: {
     type: [String],
     default: [],
   },
+
   settings: {
     reminderEnabled: {
       type: Boolean,
@@ -25,11 +42,19 @@ const UserSchema = new mongoose.Schema({
     },
     visibility: {
       type: String,
-      enum: ["circle", "private"],
       default: "circle",
     },
+    theme: {
+      type: String,
+      enum: ["light", "dark", "system"],
+      default: "system",
+    },
+  },
+
+  createdAt: {
+    type: Date,
+    default: Date.now,
   },
 });
 
 module.exports = mongoose.model("User", UserSchema);
-

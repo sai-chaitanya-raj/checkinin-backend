@@ -2,6 +2,8 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const connectDB = require("./config/db");
+
+const authRoutes = require("./routes/auth");
 const User = require("./models/User");
 
 const app = express();
@@ -16,202 +18,124 @@ connectDB();
 
 // Test route
 app.get("/", (req, res) => {
-  res.send("Checkin’in backend with MongoDB running 🚀");
+  res.send("Checkin’in backend running 🚀");
 });
 
+// Auth routes
+app.use("/auth", authRoutes);
 
 // =======================
 // POST /checkin
 // =======================
 app.post("/checkin", async (req, res) => {
   try {
-    const { userId, date } = req.body;
+    const { userId, date, mood } = req.body;
 
     if (!userId || !date) {
-      return res.status(400).json({
-        success: false,
-        message: "userId and date are required",
-      });
+      return res.status(400).json({ success: false, message: "Missing userId or date" });
     }
 
     let user = await User.findOne({ userId });
+    if (!user) return res.status(404).json({ success: false, message: "User not found" });
 
-    if (!user) {
-      user = new User({
-        userId,
-        checkIns: [],
-        circle: [],
+    // Check if already checked in for this date
+    const existingCheckIn = user.checkIns.find(c => c.date === date);
+
+    if (!existingCheckIn) {
+      user.checkIns.push({
+        date,
+        mood: mood || "okay",
+        timestamp: new Date()
       });
+      await user.save();
+    } else {
+      // Optional: Update mood if already checked in?
+      // For now, we'll just ignore or update. Let's update it.
+      existingCheckIn.mood = mood || existingCheckIn.mood;
+      await user.save();
     }
 
-    if (!user.checkIns.includes(date)) {
-      user.checkIns.push(date);
-    }
-
-    await user.save();
-
-    res.json({
-      success: true,
-      message: "Checked in successfully",
-      data: user.checkIns,
-    });
+    res.json({ success: true, data: user.checkIns });
   } catch (error) {
-    console.error("Check-in error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Server error",
-    });
+    console.error("Checkin error:", error);
+    res.status(500).json({ success: false });
   }
 });
-
 
 // =======================
 // GET /history
 // =======================
 app.get("/history", async (req, res) => {
   try {
-    const { userId } = req.query;
-
-    if (!userId) {
-      return res.status(400).json({
-        success: false,
-        message: "userId is required",
-      });
-    }
-
-    const user = await User.findOne({ userId });
-
-    res.json({
-      success: true,
-      data: user?.checkIns || [],
-    });
-  } catch (error) {
-    console.error("History error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Server error",
-    });
+    const user = await User.findOne({ userId: req.query.userId });
+    // Transform to simple array of dates for backward compatibility if needed, 
+    // BUT frontend expects strings. We should update frontend to handle objects 
+    // OR we map here. Let's send full objects now and update frontend.
+    res.json({ success: true, data: user?.checkIns || [] });
+  } catch {
+    res.status(500).json({ success: false });
   }
 });
 
-
 // =======================
-// POST /circle/add
+// GET /emotional-presence
 // =======================
-app.post("/circle/add", async (req, res) => {
+app.get("/emotional-presence", async (req, res) => {
   try {
-    const { userId, targetUserId } = req.body;
+    // For now, return all users' latest check-in. 
+    // In a real app, this would be filtered by friends.
+    const users = await User.find({});
 
-    if (!userId || !targetUserId) {
-      return res.status(400).json({
-        success: false,
-        message: "userId and targetUserId are required",
-      });
-    }
+    const presenceData = users.map(u => {
+      const lastCheckIn = u.checkIns[u.checkIns.length - 1];
+      return {
+        userId: u.userId,
+        name: u.name || u.email || "Anonymous", // Add name field to User model later if needed
+        lastCheckIn: lastCheckIn || null
+      };
+    }).filter(u => u.lastCheckIn); // Only return users who have checked in
 
-    if (userId === targetUserId) {
-      return res.status(400).json({
-        success: false,
-        message: "You cannot add yourself",
-      });
-    }
-
-    let user = await User.findOne({ userId });
-    let targetUser = await User.findOne({ userId: targetUserId });
-
-    if (!user) {
-      user = new User({ userId });
-    }
-
-    if (!targetUser) {
-      targetUser = new User({ userId: targetUserId });
-      await targetUser.save();
-    }
-
-    if (!user.circle.includes(targetUserId)) {
-      user.circle.push(targetUserId);
-    }
-
-    await user.save();
-
-    res.json({
-      success: true,
-      data: user.circle,
-    });
+    res.json({ success: true, data: presenceData });
   } catch (error) {
-    console.error("Circle add error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Server error",
-    });
+    console.error("Emotional presence error:", error);
+    res.status(500).json({ success: false });
   }
 });
-
-
-// =======================
-// GET /circle
-// =======================
-app.get("/circle", async (req, res) => {
-  try {
-    const { userId } = req.query;
-
-    if (!userId) {
-      return res.status(400).json({
-        success: false,
-        message: "userId is required",
-      });
-    }
-
-    const user = await User.findOne({ userId });
-
-    res.json({
-      success: true,
-      data: user?.circle || [],
-    });
-  } catch (error) {
-    console.error("Circle fetch error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Server error",
-    });
-  }
-});
-
 
 // =======================
 // GET /settings
 // =======================
 app.get("/settings", async (req, res) => {
   try {
-    const { userId } = req.query;
-
-    if (!userId) {
-      return res.status(400).json({
-        success: false,
-        message: "userId is required",
-      });
-    }
-
-    let user = await User.findOne({ userId });
-
+    let user = await User.findOne({ userId: req.query.userId });
     if (!user) {
-      user = new User({ userId });
+      // Create user if not exists (lazy creation for settings)
+      user = new User({
+        userId: req.query.userId,
+        authProvider: "unknown", // or infer if possible
+        settings: {
+          theme: "system",
+          reminderEnabled: true,
+          visibility: "circle"
+        }
+      });
       await user.save();
     }
 
-    res.json({
-      success: true,
-      data: user.settings,
-    });
+    if (!user.settings) {
+      user.settings = {
+        theme: "system",
+        reminderEnabled: true,
+        visibility: "circle"
+      };
+      await user.save();
+    }
+
+    res.json({ success: true, data: user.settings });
   } catch (error) {
-    console.error("Settings fetch error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Server error",
-    });
+    res.status(500).json({ success: false });
   }
 });
-
 
 // =======================
 // POST /settings
@@ -219,44 +143,22 @@ app.get("/settings", async (req, res) => {
 app.post("/settings", async (req, res) => {
   try {
     const { userId, settings } = req.body;
-
-    if (!userId || !settings) {
-      return res.status(400).json({
-        success: false,
-        message: "userId and settings are required",
-      });
-    }
-
+    console.log("Updating settings for", userId, settings);
     let user = await User.findOne({ userId });
+    if (!user) return res.status(404).json({ success: false });
 
-    if (!user) {
-      user = new User({ userId });
-    }
-
-    user.settings = {
-      ...user.settings,
-      ...settings,
-    };
-
+    // Merge existing settings with new settings
+    user.settings = { ...user.settings, ...settings };
     await user.save();
 
-    res.json({
-      success: true,
-      data: user.settings,
-    });
+    res.json({ success: true, data: user.settings });
   } catch (error) {
     console.error("Settings update error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Server error",
-    });
+    res.status(500).json({ success: false });
   }
 });
 
-
-// =======================
-// START SERVER
-// =======================
+// Start server
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });

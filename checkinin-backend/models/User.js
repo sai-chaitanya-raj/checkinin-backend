@@ -49,6 +49,13 @@ const UserSchema = new mongoose.Schema({
   },
 
   // Content
+  dailyThoughts: [
+    {
+      date: { type: String, required: true },
+      thought: { type: String, required: true, maxlength: 400 },
+      timestamp: { type: Date, default: Date.now },
+    },
+  ],
   checkIns: [
     {
       date: { type: String, required: true },

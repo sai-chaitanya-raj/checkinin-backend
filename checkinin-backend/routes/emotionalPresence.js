@@ -7,25 +7,61 @@ router.get("/", auth, async (req, res, next) => {
     try {
         const currentUser = req.user;
         const friendIds = currentUser.friends || [];
+        const today = new Date().toISOString().split("T")[0];
 
-        const users = await User.find({ userId: { $in: friendIds } });
+        const users = await User.find({ userId: { $in: [...friendIds, currentUser.userId] } })
+            .select("userId name email checkIns dailyThoughts privacy");
 
-        const presenceData = users
-            .map((u) => {
-                const lastCheckIn = u.checkIns && u.checkIns.length > 0 ? u.checkIns[u.checkIns.length - 1] : null;
-                const visibility = u.privacy?.checkinVisibility || "friends";
-                if (visibility === "private") return null;
-                if (!lastCheckIn) return null;
+        const presenceData = [];
+        let myThought = null;
+        const friendsThoughts = [];
 
-                return {
-                    userId: u.userId,
-                    name: u.name || (u.email ? u.email.split("@")[0] : "Anonymous"),
-                    lastCheckIn,
-                };
-            })
-            .filter(Boolean);
+        for (const u of users) {
+            const displayName = u.name || (u.email ? u.email.split("@")[0] : "Anonymous");
+            const lastCheckIn = u.checkIns && u.checkIns.length > 0 ? u.checkIns[u.checkIns.length - 1] : null;
+            const visibility = u.privacy?.checkinVisibility || "friends";
+            const todayThought = (u.dailyThoughts || []).find((t) => t.date === today);
 
-        res.json({ success: true, data: presenceData });
+            if (u.userId === currentUser.userId) {
+                myThought = todayThought ? todayThought.thought : null;
+            } else {
+                if (visibility !== "private" && lastCheckIn) {
+                    presenceData.push({ userId: u.userId, name: displayName, lastCheckIn });
+                }
+                if (todayThought) {
+                    friendsThoughts.push({ name: displayName, thought: todayThought.thought });
+                }
+            }
+        }
+
+        res.json({ success: true, data: presenceData, myThought, friendsThoughts });
+    } catch (error) {
+        next(error);
+    }
+});
+
+router.post("/thought", auth, async (req, res, next) => {
+    try {
+        const { thought } = req.body;
+        const user = req.user;
+        const today = new Date().toISOString().split("T")[0];
+
+        const wordCount = (thought || "").trim().split(/\s+/).filter(Boolean).length;
+        if (wordCount > 60) {
+            return res.status(400).json({ success: false, message: "Maximum 60 words allowed" });
+        }
+
+        if (!user.dailyThoughts) user.dailyThoughts = [];
+        const existing = user.dailyThoughts.find((t) => t.date === today);
+        if (existing) {
+            existing.thought = (thought || "").trim();
+            existing.timestamp = new Date();
+        } else {
+            user.dailyThoughts.push({ date: today, thought: (thought || "").trim(), timestamp: new Date() });
+        }
+        await user.save();
+
+        res.json({ success: true, message: "Thought saved" });
     } catch (error) {
         next(error);
     }

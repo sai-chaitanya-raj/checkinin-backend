@@ -41,11 +41,27 @@ exports.getFriendData = async (req, res) => {
             };
         });
 
-        const receivedRequests = await User.find({ userId: { $in: user.friendRequests.received } })
-            .select("userId publicId name email avatar");
+        const receivedRaw = await User.find({ userId: { $in: user.friendRequests.received } })
+            .select("userId publicId name email avatar")
+            .lean();
+        const sentRaw = await User.find({ userId: { $in: user.friendRequests.sent } })
+            .select("userId publicId name email avatar")
+            .lean();
 
-        const sentRequests = await User.find({ userId: { $in: user.friendRequests.sent } })
-            .select("userId publicId name email avatar");
+        const receivedRequests = receivedRaw.map((u) => ({
+            userId: u.userId,
+            publicId: u.publicId,
+            name: u.name || (u.email ? u.email.split("@")[0] : "Anonymous"),
+            email: u.email,
+            avatar: u.avatar,
+        }));
+        const sentRequests = sentRaw.map((u) => ({
+            userId: u.userId,
+            publicId: u.publicId,
+            name: u.name || (u.email ? u.email.split("@")[0] : "Anonymous"),
+            email: u.email,
+            avatar: u.avatar,
+        }));
 
         res.json({
             success: true,

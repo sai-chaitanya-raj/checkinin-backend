@@ -1,4 +1,5 @@
 const User = require("../models/User");
+const { calculateStreak } = require("../utils/calculateStreak");
 
 // =======================
 // GET /friends
@@ -34,7 +35,7 @@ exports.getFriendData = async (req, res) => {
             return {
                 userId: f.userId,
                 publicId: f.publicId,
-                name: f.name || f.email.split('@')[0],
+                name: f.name || (f.email ? f.email.split("@")[0] : "Anonymous"),
                 avatar: f.avatar,
                 lastCheckIn
             };
@@ -186,12 +187,11 @@ exports.getCircleFeed = async (req, res) => {
 
                 feed.push({
                     userId: f.userId,
-                    name: f.name || f.email.split('@')[0],
+                    name: f.name || (f.email ? f.email.split("@")[0] : "Anonymous"),
                     publicId: f.publicId,
                     avatar: f.avatar,
                     lastCheckIn: lastCheckIn,
-                    // Simple streak calc: check consecutive days (advanced logic omitted for brevity, using length as proxy or just raw count if needed, but user asked for streak. Let's send raw checkin count or simple streak if computed)
-                    streak: f.checkIns.length // Placeholder for now, real streak needs date logic
+                    streak: calculateStreak(f.checkIns),
                 });
             }
         });

@@ -1,8 +1,10 @@
 const User = require("../models/User");
+const PasswordResetToken = require("../models/PasswordResetToken");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const { OAuth2Client } = require("google-auth-library");
 const crypto = require("crypto");
+const nodemailer = require("nodemailer");
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -39,7 +41,7 @@ exports.signup = async (req, res) => {
         }
 
         const publicId = await generatePublicId();
-        const hashedPassword = await bcrypt.hash(password, 8);
+        const hashedPassword = await bcrypt.hash(password, 12);
         const userId = crypto.randomUUID(); // Valid unique ID for our system
 
         const user = new User({
@@ -167,21 +169,103 @@ exports.googleAuth = async (req, res) => {
     }
 };
 
+// Helper: Send password reset email via Gmail or configured SMTP
+async function sendResetEmail(email, resetToken) {
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:19006";
+    const resetLink = `${frontendUrl}/auth/reset-password?token=${resetToken}`;
+
+    let transporter;
+
+    // Gmail: use smtp.gmail.com with App Password (enable 2FA, then create App Password at myaccount.google.com)
+    if (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) {
+        transporter = nodemailer.createTransport({
+            service: "gmail",
+            auth: {
+                user: process.env.GMAIL_USER,
+                pass: process.env.GMAIL_APP_PASSWORD,
+            },
+        });
+    } else if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+        transporter = nodemailer.createTransport({
+            host: process.env.SMTP_HOST,
+            port: parseInt(process.env.SMTP_PORT, 10) || 587,
+            secure: process.env.SMTP_SECURE === "true",
+            auth: {
+                user: process.env.SMTP_USER,
+                pass: process.env.SMTP_PASS,
+            },
+        });
+    }
+
+    if (transporter) {
+        await transporter.sendMail({
+            from: process.env.SMTP_FROM || process.env.GMAIL_USER || "noreply@checkinin.app",
+            to: email,
+            subject: "CheckInIn - Reset Your Password",
+            text: `Reset your password: ${resetLink}\n\nThis link expires in 1 hour.\n\nIf you didn't request this, ignore this email.`,
+            html: `
+                <div style="font-family: sans-serif; max-width: 500px;">
+                    <h2>Reset Your Password</h2>
+                    <p>Click the link below to reset your CheckInIn password:</p>
+                    <p><a href="${resetLink}" style="color: #6C63FF; font-weight: bold;">Reset Password</a></p>
+                    <p style="color: #666;">Or copy this link: ${resetLink}</p>
+                    <p style="color: #999; font-size: 12px;">This link expires in 1 hour.</p>
+                    <p style="color: #999; font-size: 12px;">If you didn't request this, you can safely ignore this email.</p>
+                </div>
+            `,
+        });
+    } else {
+        console.log(`[Password Reset] SMTP not configured. Link for ${email}: ${resetLink}`);
+    }
+}
+
 // =======================
 // POST /auth/forgot-password
 // =======================
 exports.forgotPassword = async (req, res) => {
-    // Mock implementation for now
-    const { email } = req.body;
-    const user = await User.findOne({ email });
-    if (!user) return res.status(404).json({ success: false, message: "User not found" });
+    try {
+        const { email } = req.body;
+        const user = await User.findOne({ email });
+        if (!user) return res.status(404).json({ success: false, message: "User not found" });
+        if (user.authProvider !== "email") {
+            return res.status(400).json({ success: false, message: "Use Google sign-in for this account" });
+        }
 
-    // In a real app, generate token, save to DB with expiry, send email
-    // For now, return a mock token
-    const resetToken = crypto.randomBytes(20).toString('hex');
+        const resetToken = crypto.randomBytes(32).toString("hex");
+        const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
 
-    // Simulating email sent
-    console.log(`Reset Token for ${email}: ${resetToken}`);
+        await PasswordResetToken.create({ email, token: resetToken, expiresAt });
+        await sendResetEmail(email, resetToken);
 
-    res.json({ success: true, message: "Password reset link sent to email (Mock: Check console)" });
+        res.json({ success: true, message: "Password reset link sent to email" });
+    } catch (error) {
+        console.error("Forgot password error:", error);
+        res.status(500).json({ success: false, message: "Failed to send reset email" });
+    }
+};
+
+// =======================
+// POST /auth/reset-password
+// =======================
+exports.resetPassword = async (req, res) => {
+    try {
+        const { token, newPassword } = req.body;
+        const resetRecord = await PasswordResetToken.findOne({ token });
+
+        if (!resetRecord || resetRecord.expiresAt < new Date()) {
+            return res.status(400).json({ success: false, message: "Invalid or expired reset token" });
+        }
+
+        const user = await User.findOne({ email: resetRecord.email }).select("+password");
+        if (!user) return res.status(404).json({ success: false, message: "User not found" });
+
+        user.password = await bcrypt.hash(newPassword, 12);
+        await user.save();
+        await PasswordResetToken.deleteOne({ token });
+
+        res.json({ success: true, message: "Password updated successfully" });
+    } catch (error) {
+        console.error("Reset password error:", error);
+        res.status(500).json({ success: false, message: "Failed to reset password" });
+    }
 };

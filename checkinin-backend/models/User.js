@@ -7,6 +7,26 @@ const UserSchema = new mongoose.Schema({
     required: true,
   },
 
+  // Auth (required for email signup/login)
+  email: {
+    type: String,
+    unique: true,
+    sparse: true,
+    trim: true,
+    lowercase: true,
+    index: true,
+  },
+  password: {
+    type: String,
+    select: false,
+    minlength: 6,
+  },
+  authProvider: {
+    type: String,
+    enum: ["email", "google"],
+    default: "email",
+  },
+
   // Identity
   publicId: {
     type: String,

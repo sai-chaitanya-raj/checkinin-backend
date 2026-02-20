@@ -122,13 +122,16 @@ const bcrypt = require("bcryptjs");
 exports.changePassword = async (req, res) => {
     try {
         const { oldPassword, newPassword } = req.body;
-        const user = await User.findById(req.user.userId).select("+password");
+        const user = await User.findOne({ userId: req.user.userId }).select("+password");
+
+        if (!user || !user.password) {
+            return res.status(400).json({ success: false, message: "Cannot change password for this account" });
+        }
 
         const isMatch = await bcrypt.compare(oldPassword, user.password);
         if (!isMatch) return res.status(400).json({ success: false, message: "Incorrect old password" });
 
-        const salt = await bcrypt.genSalt(10);
-        user.password = await bcrypt.hash(newPassword, salt);
+        user.password = await bcrypt.hash(newPassword, 12);
         await user.save();
 
         res.json({ success: true, message: "Password updated successfully" });

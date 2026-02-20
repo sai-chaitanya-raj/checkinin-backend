@@ -1,116 +1,98 @@
-require("dotenv").config();
+const config = require("./config");
+config.validateEnv();
+
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
+const helmet = require("helmet");
+const morgan = require("morgan");
+const rateLimit = require("express-rate-limit");
 
 const authRoutes = require("./routes/auth");
 const friendRoutes = require("./routes/friends");
-const authMiddleware = require("./middleware/auth");
-const User = require("./models/User");
+const profileRoutes = require("./routes/profile");
+const checkinRoutes = require("./routes/checkin");
+const historyRoutes = require("./routes/history");
+const emotionalPresenceRoutes = require("./routes/emotionalPresence");
+const errorHandler = require("./middleware/errorHandler");
+const scheduler = require("./services/scheduler");
 
 const app = express();
+
+app.use(helmet());
+app.use(morgan(config.env === "development" ? "dev" : "combined"));
 app.use(express.json());
-app.use(cors());
 
-// Scheduler
-const scheduler = require("./services/scheduler");
-scheduler.start();
+const corsOptions = {
+    origin: config.env === "development" ? true : process.env.CORS_ORIGIN || false,
+    credentials: true,
+};
+app.use(cors(corsOptions));
 
-// Connect to MongoDB
-mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log("MongoDB Connected"))
-  .catch(err => console.error(err));
+const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 20,
+    message: { success: false, message: "Too many attempts, try again later" },
+});
+app.use("/auth", authLimiter);
 
-// Routes
-const profileRoutes = require("./routes/profile");
+const apiLimiter = rateLimit({
+    windowMs: 1 * 60 * 1000,
+    max: 100,
+});
+app.use("/", apiLimiter);
 
-// Routes
+app.get("/health", (req, res) => {
+    res.json({ success: true, status: "ok", timestamp: new Date().toISOString() });
+});
+
 app.use("/auth", authRoutes);
 app.use("/friends", friendRoutes);
 app.use("/profile", profileRoutes);
+app.use("/checkin", checkinRoutes);
+app.use("/history", historyRoutes);
+app.use("/emotional-presence", emotionalPresenceRoutes);
 
-// =======================
-// POST /checkin
-// =======================
-app.post("/checkin", authMiddleware, async (req, res) => {
-  try {
-    const { date, mood } = req.body;
-    const user = req.user; // Attached by middleware
-
-    // Check if already checked in for this date
-    const existingCheckIn = user.checkIns.find(c => c.date === date);
-
-    if (!existingCheckIn) {
-      user.checkIns.push({
-        date,
-        mood: mood || "okay",
-        timestamp: new Date()
-      });
-      await user.save();
-    } else {
-      existingCheckIn.mood = mood || existingCheckIn.mood;
-      await user.save();
-    }
-
-    res.json({ success: true, data: user.checkIns });
-  } catch (error) {
-    console.error("Checkin error:", error);
-    res.status(500).json({ success: false });
-  }
+app.use((req, res) => {
+    res.status(404).json({ success: false, message: "Route not found" });
 });
 
-// =======================
-// GET /history
-// =======================
-app.get("/history", async (req, res) => {
-  // Making this public for now, or use authMiddleware if strict
-  // If strict: app.get("/history", authMiddleware, ...)
-  try {
-    const userId = req.query.userId;
-    if (!userId) return res.status(400).json({ success: false });
+app.use(errorHandler);
 
-    const user = await User.findOne({ userId });
-    if (!user) return res.status(404).json({ success: false });
+let server;
 
-    // Return checks
-    res.json({ success: true, data: user.checkIns });
-  } catch (error) {
-    res.status(500).json({ success: false });
-  }
-});
+mongoose
+    .connect(config.mongoUri)
+    .then(() => {
+        console.log("MongoDB Connected");
+        scheduler.start();
+        server = app.listen(config.port, () => {
+            console.log(`Server running on http://localhost:${config.port}`);
+        });
+    })
+    .catch((err) => {
+        console.error("MongoDB connection error:", err);
+        process.exit(1);
+    });
 
-// =======================
-// GET /emotional-presence
-// =======================
-app.get("/emotional-presence", async (req, res) => {
-  try {
-    // For now, return all users' latest check-in. 
-    // In a real app, this would be filtered by friends.
-    const users = await User.find({});
+function gracefulShutdown(signal) {
+    console.log(`\n${signal} received. Shutting down gracefully...`);
+    server?.close(() => {
+        console.log("HTTP server closed.");
+        mongoose.connection.close(false).then(() => {
+            console.log("MongoDB connection closed.");
+            process.exit(0);
+        });
+    });
+    setTimeout(() => {
+        console.error("Forced shutdown");
+        process.exit(1);
+    }, 10000);
+}
 
-    const presenceData = users.map(u => {
-      const lastCheckIn = u.checkIns[u.checkIns.length - 1];
-      return {
-        userId: u.userId,
-        name: u.name || u.email || "Anonymous", // Add name field to User model later if needed
-        lastCheckIn: lastCheckIn || null
-      };
-    }).filter(u => u.lastCheckIn); // Only return users who have checked in
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
 
-    res.json({ success: true, data: presenceData });
-  } catch (error) {
-    console.error("Emotional presence error:", error);
-    res.status(500).json({ success: false });
-  }
-});
-
-// =======================
-// GET /settings (Profile/Settings)
-// =======================
-// Deprecated /settings endpoints removed. 
-// Uses routes/settings.js and routes/profile.js instead.
-
-const PORT = process.env.PORT || 5001;
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+process.on("unhandledRejection", (reason, promise) => {
+    console.error("Unhandled Rejection at:", promise, "reason:", reason);
 });

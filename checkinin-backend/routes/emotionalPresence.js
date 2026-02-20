@@ -40,6 +40,22 @@ router.get("/", auth, async (req, res, next) => {
     }
 });
 
+router.delete("/thought", auth, async (req, res, next) => {
+    try {
+        const user = req.user;
+        const today = new Date().toISOString().split("T")[0];
+
+        if (user.dailyThoughts && user.dailyThoughts.length > 0) {
+            user.dailyThoughts = user.dailyThoughts.filter((t) => t.date !== today);
+            await user.save();
+        }
+
+        res.json({ success: true, message: "Thought cleared" });
+    } catch (error) {
+        next(error);
+    }
+});
+
 router.post("/thought", auth, async (req, res, next) => {
     try {
         const { thought } = req.body;

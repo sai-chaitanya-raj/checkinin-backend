@@ -16,6 +16,7 @@ const historyRoutes = require("./routes/history");
 const emotionalPresenceRoutes = require("./routes/emotionalPresence");
 const errorHandler = require("./middleware/errorHandler");
 const scheduler = require("./services/scheduler");
+const { startReminderCron } = require("./cron/reminderJob");
 
 const app = express();
 

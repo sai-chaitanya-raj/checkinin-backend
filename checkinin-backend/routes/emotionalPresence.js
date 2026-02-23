@@ -23,13 +23,13 @@ router.get("/", auth, async (req, res, next) => {
             const todayThought = (u.dailyThoughts || []).find((t) => t.date === today);
 
             if (u.userId === currentUser.userId) {
-                myThought = todayThought ? todayThought.thought : null;
+                myThought = todayThought ? { thought: todayThought.thought, timestamp: todayThought.timestamp } : null;
             } else {
                 if (visibility !== "private" && lastCheckIn) {
                     presenceData.push({ userId: u.userId, name: displayName, lastCheckIn });
                 }
                 if (todayThought) {
-                    friendsThoughts.push({ name: displayName, thought: todayThought.thought });
+                    friendsThoughts.push({ name: displayName, thought: todayThought.thought, timestamp: todayThought.timestamp });
                 }
             }
         }
@@ -59,6 +59,7 @@ router.delete("/thought", auth, async (req, res, next) => {
 router.post("/thought", auth, async (req, res, next) => {
     try {
         const { thought } = req.body;
+        console.log(`[POST /emotional-presence/thought] Body:`, req.body);
         const user = req.user;
         const today = new Date().toISOString().split("T")[0];
 

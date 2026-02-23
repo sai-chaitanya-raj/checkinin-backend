@@ -26,4 +26,7 @@ router.put("/push-token", auth, profileController.updatePushToken);
 // Avatar Route (Expects form-data with field name 'avatar')
 router.put("/avatar", auth, upload.single("avatar"), profileController.uploadAvatar);
 
+// Public Profile Route (Must be last to avoid catching hardcoded routes like /me)
+router.get("/:publicId", auth, profileController.getPublicProfile);
+
 module.exports = router;

@@ -1,5 +1,4 @@
 const User = require("../models/User");
-const { calculateStreak } = require("../utils/calculateStreak");
 
 // =======================
 // GET /friends
@@ -206,8 +205,7 @@ exports.getCircleFeed = async (req, res) => {
                     name: f.name || (f.email ? f.email.split("@")[0] : "Anonymous"),
                     publicId: f.publicId,
                     avatar: f.avatar,
-                    lastCheckIn: lastCheckIn,
-                    streak: calculateStreak(f.checkIns),
+                    lastCheckIn: lastCheckIn
                 });
             }
         });

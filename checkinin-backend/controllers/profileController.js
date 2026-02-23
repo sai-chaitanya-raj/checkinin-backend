@@ -250,3 +250,99 @@ exports.updatePushToken = async (req, res) => {
         res.status(500).json({ success: false, message: "Server error" });
     }
 };
+
+// =======================
+// GET /profile/:publicId
+// =======================
+exports.getPublicProfile = async (req, res) => {
+    try {
+        const targetPublicId = req.params.publicId.toUpperCase();
+        const requester = req.user; // from auth middleware
+
+        const targetUser = await User.findOne({ publicId: targetPublicId });
+        if (!targetUser) {
+            return res.status(404).json({ success: false, message: "User not found" });
+        }
+
+        // 1. Enforce Privacy
+        const visibility = targetUser.privacy?.profileVisibility || 'public';
+        const isFriend = targetUser.friends.includes(requester.userId);
+
+        // Self-view bypass
+        const isSelf = targetUser.userId === requester.userId;
+
+        if (!isSelf) {
+            if (visibility === 'private') {
+                return res.status(403).json({ success: false, message: "Profile is private" });
+            }
+            if (visibility === 'friends' && !isFriend) {
+                return res.status(403).json({ success: false, message: "Profile is private" });
+            }
+        }
+
+        // 2. Compute Fields
+        const checkIns = targetUser.checkIns || [];
+        const totalCheckIns = checkIns.length;
+
+        let currentStreak = 0;
+        if (totalCheckIns > 0) {
+            const dates = checkIns.map(c => c.date);
+            const sortedDates = [...new Set(dates)].sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+
+            const today = new Date().toISOString().split("T")[0];
+            const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0];
+
+            let expectedDate = sortedDates[0] === today ? today : yesterday;
+
+            if (sortedDates[0] === today || sortedDates[0] === yesterday) {
+                for (const date of sortedDates) {
+                    if (date === expectedDate) {
+                        currentStreak++;
+                        expectedDate = new Date(new Date(date).getTime() - 86400000).toISOString().split("T")[0];
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+
+        const recentCheckIns = checkIns.slice(-5).reverse().map(c => ({
+            date: c.date,
+            mood: c.mood,
+            timestamp: c.timestamp
+        }));
+
+        const weeklyMoodSummary = { great: 0, okay: 0, bad: 0 };
+        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+
+        checkIns.forEach(c => {
+            if (c.date >= sevenDaysAgo) {
+                if (weeklyMoodSummary[c.mood] !== undefined) {
+                    weeklyMoodSummary[c.mood]++;
+                }
+            }
+        });
+
+        const friendCount = targetUser.friends.length;
+
+        // 3. Return safe fields
+        res.json({
+            success: true,
+            data: {
+                publicId: targetUser.publicId,
+                name: targetUser.name || (targetUser.email ? targetUser.email.split("@")[0] : "Anonymous"),
+                avatar: targetUser.avatar,
+                friendCount,
+                streak: currentStreak,
+                totalCheckIns,
+                weeklyMoodSummary,
+                recentCheckIns,
+                isFriend
+            }
+        });
+
+    } catch (error) {
+        console.error("Get public profile error:", error);
+        res.status(500).json({ success: false, message: "Server error" });
+    }
+};

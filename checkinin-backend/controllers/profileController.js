@@ -53,6 +53,26 @@ exports.updateProfile = async (req, res) => {
 };
 
 // =======================
+// PUT /profile/bio
+// =======================
+exports.updateBio = async (req, res) => {
+    try {
+        const { bio } = req.body;
+        const user = req.user;
+
+        if (bio !== undefined) {
+            user.bio = bio.trim().substring(0, 120);
+        }
+
+        await user.save();
+        res.json({ success: true, message: "Bio updated", data: { bio: user.bio } });
+    } catch (error) {
+        console.error("Update bio error:", error);
+        res.status(500).json({ success: false, message: "Server error" });
+    }
+};
+
+// =======================
 // PUT /profile/privacy
 // =======================
 exports.updatePrivacy = async (req, res) => {
@@ -78,37 +98,32 @@ exports.updatePrivacy = async (req, res) => {
 // =======================
 // PUT /profile/avatar
 // =======================
-exports.uploadAvatar = async (req, res) => {
+exports.updateAvatar = async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ success: false, message: "No file uploaded" });
 
-        // Upload to Cloudinary
-        // stream upload is a bit complex, simpler to use buffer or path if multer saves to disk. 
-        // Using memory storage for multer usually requires stream upload or converting buffer.
-        // For simplicity with standard multer setup:
-
-        const b64 = Buffer.from(req.file.buffer).toString("base64");
-        let dataURI = "data:" + req.file.mimetype + ";base64," + b64;
-
-        // Fallback if no cloudinary credentials: use a placeholder or local mock?
-        // User requested Cloudinary.
-        if (!process.env.CLOUDINARY_CLOUD_NAME) {
-            return res.status(500).json({ success: false, message: "Cloudinary not configured" });
-        }
-
-        const result = await cloudinary.uploader.upload(dataURI, {
-            folder: "checkin-avatars",
-            public_id: req.user.userId
-        });
-
         const user = req.user;
-        user.avatar = result.secure_url;
+        user.avatar = req.file.path; // Cloudinary automatically provides the safe URL via multer-storage-cloudinary
         await user.save();
 
         res.json({ success: true, message: "Avatar updated", data: { avatar: user.avatar } });
     } catch (error) {
         console.error("Avatar upload error:", error);
         res.status(500).json({ success: false, message: "Upload failed" });
+    }
+};
+
+// =======================
+// DELETE /profile/avatar
+// =======================
+exports.deleteAvatar = async (req, res) => {
+    try {
+        const user = req.user;
+        user.avatar = "";
+        await user.save();
+        res.json({ success: true, message: "Avatar removed", data: { avatar: "" } });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server error" });
     }
 };
 
@@ -332,12 +347,14 @@ exports.getPublicProfile = async (req, res) => {
                 publicId: targetUser.publicId,
                 name: targetUser.name || (targetUser.email ? targetUser.email.split("@")[0] : "Anonymous"),
                 avatar: targetUser.avatar,
+                bio: targetUser.bio,
                 friendCount,
                 streak: currentStreak,
                 totalCheckIns,
                 weeklyMoodSummary,
                 recentCheckIns,
-                isFriend
+                isFriend,
+                isSelf
             }
         });
 

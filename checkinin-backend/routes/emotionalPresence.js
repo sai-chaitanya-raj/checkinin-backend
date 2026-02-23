@@ -19,7 +19,7 @@ router.get("/", auth, async (req, res, next) => {
         for (const u of users) {
             const displayName = u.name || (u.email ? u.email.split("@")[0] : "Anonymous");
             const lastCheckIn = u.checkIns && u.checkIns.length > 0 ? u.checkIns[u.checkIns.length - 1] : null;
-            const visibility = u.privacy?.checkinVisibility || "friends";
+            const visibility = u.privacy ? (u.privacy.checkinVisibility || "friends") : "friends";
             const todayThought = (u.dailyThoughts || []).find((t) => t.date === today);
 
             if (u.userId === currentUser.userId) {
@@ -28,11 +28,23 @@ router.get("/", auth, async (req, res, next) => {
                 if (visibility !== "private" && lastCheckIn) {
                     presenceData.push({ userId: u.userId, name: displayName, lastCheckIn });
                 }
-                if (todayThought) {
-                    friendsThoughts.push({ name: displayName, thought: todayThought.thought, timestamp: todayThought.timestamp });
+            }
+
+            if (u.dailyThoughts && u.dailyThoughts.length > 0) {
+                if (u.userId === currentUser.userId || visibility !== "private") {
+                    for (const t of u.dailyThoughts) {
+                        friendsThoughts.push({
+                            name: u.userId === currentUser.userId ? "Me" : displayName,
+                            thought: t.thought,
+                            timestamp: t.timestamp || new Date(t.date).toISOString()
+                        });
+                    }
                 }
             }
         }
+
+        // Sort globally by timestamp, newest first
+        friendsThoughts.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
         res.json({ success: true, data: presenceData, myThought, friendsThoughts });
     } catch (error) {

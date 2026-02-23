@@ -37,6 +37,7 @@ const UserSchema = new mongoose.Schema({
     uppercase: true
   },
   name: { type: String, trim: true },
+  bio: { type: String, maxlength: 120, default: "" },
   age: { type: Number },
   avatar: { type: String, default: "" },
   expoPushToken: { type: String },

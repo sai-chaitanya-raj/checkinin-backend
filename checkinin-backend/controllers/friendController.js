@@ -9,12 +9,13 @@ exports.getFriendData = async (req, res) => {
 
         // Populate friends
         const friendList = await User.find({ userId: { $in: user.friends } })
-            .select("userId publicId name email avatar checkIns privacy")
+            .select("userId publicId name email avatar bio checkIns privacy")
             .lean();
 
         // Format friends with last checkin (Respecting Privacy)
         const formattedFriends = friendList.map(f => {
             let lastCheckIn = null;
+            let currentStreak = 0;
             if (f.checkIns && f.checkIns.length > 0) {
                 const checkIn = f.checkIns[f.checkIns.length - 1];
 
@@ -29,6 +30,24 @@ exports.getFriendData = async (req, res) => {
                     // Private
                     lastCheckIn = null;
                 }
+
+                // Streak calculation
+                const dates = f.checkIns.map(c => c.date);
+                const sortedDates = [...new Set(dates)].sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+                const today = new Date().toISOString().split("T")[0];
+                const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0];
+
+                let expectedDate = sortedDates[0] === today ? today : yesterday;
+                if (sortedDates[0] === today || sortedDates[0] === yesterday) {
+                    for (const date of sortedDates) {
+                        if (date === expectedDate) {
+                            currentStreak++;
+                            expectedDate = new Date(new Date(date).getTime() - 86400000).toISOString().split("T")[0];
+                        } else {
+                            break;
+                        }
+                    }
+                }
             }
 
             return {
@@ -36,6 +55,8 @@ exports.getFriendData = async (req, res) => {
                 publicId: f.publicId,
                 name: f.name || (f.email ? f.email.split("@")[0] : "Anonymous"),
                 avatar: f.avatar,
+                bio: f.bio,
+                streak: currentStreak,
                 lastCheckIn
             };
         });

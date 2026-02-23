@@ -41,6 +41,8 @@ const UserSchema = new mongoose.Schema({
   age: { type: Number },
   avatar: { type: String, default: "" },
   expoPushToken: { type: String },
+  timezone: { type: String, default: "UTC" },
+  lastReminderSent: { type: Date },
 
   // Social
   friends: { type: [String], default: [] }, // Array of userIds

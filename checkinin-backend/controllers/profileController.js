@@ -253,10 +253,12 @@ exports.deleteAccount = async (req, res) => {
 // =======================
 exports.updatePushToken = async (req, res) => {
     try {
-        const { token } = req.body;
+        const { token, timezone } = req.body;
         const user = req.user;
 
-        user.expoPushToken = token;
+        if (token) user.expoPushToken = token;
+        if (timezone) user.timezone = timezone;
+
         await user.save();
 
         res.json({ success: true, message: "Push token updated" });

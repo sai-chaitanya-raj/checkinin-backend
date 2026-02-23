@@ -1,6 +1,7 @@
 {
-  "dependencies": {
-    "google-auth-library": "^10.5.0",
-    "jsonwebtoken": "^9.0.3"
+  "name": "checkinin-root",
+  "scripts": {
+    "postinstall": "npm install --prefix checkinin-backend --legacy-peer-deps",
+    "start": "npm start --prefix checkinin-backend"
   }
 }

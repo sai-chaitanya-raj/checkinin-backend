@@ -47,6 +47,11 @@ app.get("/health", (req, res) => {
     res.json({ success: true, status: "ok", timestamp: new Date().toISOString() });
 });
 
+// Root route handler for Render deployment
+app.get("/", (req, res) => {
+    res.json({ success: true, message: "Welcome to CheckInIn API" });
+});
+
 app.use("/auth", authRoutes);
 app.use("/friends", friendRoutes);
 app.use("/profile", profileRoutes);
